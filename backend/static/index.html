@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>EZ-DMS</title>
+</head>
+<body>
+    <h1>EZ-DMS</h1>
+
+    <!-- Textbox for message content -->
+    <form id="messageForm">
+        <textarea id="messageContent" placeholder="Write your message here..."></textarea><br>
+
+        <!-- Search bar for message ID -->
+        <input type="text" id="searchId" placeholder="Enter Message ID to Search">
+        <button type="button" onclick="searchMessage()">Search</button><br><br>
+
+        <!-- Button for creating a new message -->
+        <button type="button" id="createButton" onclick="createMessage()">Create Message</button>
+
+        <!-- Buttons for Save and Delete operations (hidden by default) -->
+        <button type="button" id="saveButton" onclick="saveMessage()" style="display: none;">Save Changes</button>
+        <button type="button" id="deleteButton" onclick="deleteMessage()" style="display: none;">Delete Message</button>
+
+        <!-- Panic and Decrypt (hidden by default) -->
+        <button type="button" id="panicButton" onclick="encryptMessage()" style="display: none;">Panic Button (Encrypt)</button>
+        <button type="button" id="decryptButton" onclick="decryptMessage()" style="display: none;">Decrypt Message</button>
+
+    </form>
+
+    <div id="message"></div> <!-- Display messages here -->
+    <script src="script.js"></script>
+</body>
+</html>
