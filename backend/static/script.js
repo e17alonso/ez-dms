@@ -1,161 +1,189 @@
-let currentMessageId = "";  // Store the current message ID for reference
-let currentEncryptedMessage = "";  // Store the encrypted message
-let isEncrypted = false;  // Flag to track if the message is encrypted
+let state = {
+  user_id: null,
+  username: null,
+  public_key: null,
+  login_pin: null,
+  search_pin: null,
+  active_conversation: null,
+  partner_label: null
+};
 
-// Function to create a new message
-async function createMessage() {
-    let content = document.getElementById('messageContent').value;
-    let response = await fetch('http://127.0.0.1:5000/create', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: `content=${encodeURIComponent(content)}`
-    });
-    let result = await response.json();
-    if (result.id) {
-        document.getElementById('message').innerHTML = `New Message Created with ID: <b>${result.id}</b>`;
-        document.getElementById('messageContent').value = '';  // Clear the textarea
-    } else {
-        document.getElementById('message').innerHTML = `<span style="color: red;">Error: ${result.error}</span>`;
-    }
+async function registerUser() {
+  const username = document.getElementById('reg_username').value.trim();
+  if (!username) { alert("Username required"); return; }
+  const res = await fetch('/register', {
+    method: 'POST',
+    headers: {'Content-Type':'application/x-www-form-urlencoded'},
+    body: `username=${encodeURIComponent(username)}`
+  });
+  const data = await res.json();
+  if (data.error) { alert(data.error); return; }
+  const box = document.getElementById('register_result');
+  box.innerHTML = `
+    <b>Account created</b><br/>
+    Login PIN: <code>${data.login_pin}</code><br/>
+    Search PIN: <code>${data.search_pin}</code><br/><br/>
+    <b>PUBLIC KEY</b><br/><pre>${data.public_key}</pre>
+    <div class="hint">Tu private key quedó cifrada con tu Login PIN (no se muestra ni se copia).</div>
+  `;
 }
 
-// Function to search for a message using its ID
-async function searchMessage() {
-    let searchId = document.getElementById('searchId').value;
-    let response = await fetch(`http://127.0.0.1:5000/message/${searchId}`, {
-        method: 'GET',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'}
-    });
-    let result = await response.json();
+async function login() {
+  const pin = document.getElementById('login_pin').value.trim();
+  if (!pin) { alert("Login PIN required"); return; }
 
-    if (result.content) {
-        // Message found: Display content and show relevant buttons
-        currentMessageId = searchId;
-        document.getElementById('messageContent').value = result.content;  // Display the message content
-        document.getElementById('message').innerHTML = `Message ID: <b>${searchId}</b> loaded successfully.`;
+  // Limpieza visual y de estado antes de cargar nuevo usuario
+  resetChatViews();        // limpia chat_view y oculta chat_box
+  clearConversations();    // vacía la sidebar
+  state.active_conversation = null;
 
-        if (result.is_encrypted == 1) {
-            // If the message is encrypted
-            document.getElementById('panicButton').style.display = 'none';     // Hide Panic Button
-            document.getElementById('saveButton').style.display = 'none';      // Hide Save Changes Button
-            document.getElementById('deleteButton').style.display = 'none';    // Hide Delete Button
-            document.getElementById('createButton').style.display = 'none';    // Hide Create Message Button
-            document.getElementById('decryptButton').style.display = 'inline'; // Show Decrypt Button
-        } else {
-            // If the message is not encrypted
-            document.getElementById('panicButton').style.display = 'inline';   // Show Panic Button
-            document.getElementById('saveButton').style.display = 'inline';    // Show Save Changes Button
-            document.getElementById('deleteButton').style.display = 'inline';  // Show Delete Button
-            document.getElementById('decryptButton').style.display = 'none';   // Hide Decrypt Button
-            document.getElementById('createButton').style.display = 'none';    // Hide Create Message Button
-        }
-    } else {
-        // No message found: Show error message, clear the textbox, and reset buttons
-        document.getElementById('message').innerHTML = `<span style="color: red;">Error: ${result.error}</span>`;
-        document.getElementById('messageContent').value = '';  // Clear the message content textbox
-        resetButtons();  // Reset to default state if no message is found
-    }
+  const res = await fetch('/login', {
+    method: 'POST',
+    headers: {'Content-Type':'application/x-www-form-urlencoded'},
+    body: `login_pin=${encodeURIComponent(pin)}`
+  });
+  const data = await res.json();
+  if (data.error) { alert(data.error); return; }
+
+  state.user_id = data.user_id;
+  state.username = data.username;
+  state.public_key = data.public_key;
+  state.login_pin = data.login_pin;
+  state.search_pin = data.search_pin;
+
+  document.getElementById('me_label').innerText = `${state.username} (you)`;
+  document.getElementById('me_login_pin').innerText = state.login_pin;
+  document.getElementById('me_search_pin').innerText = state.search_pin;
+
+  document.getElementById('auth').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+
+  await loadConversations();
 }
 
-// Function to save changes to the current message
-async function saveMessage() {
-    let content = document.getElementById('messageContent').value;
-    if (currentMessageId === "") {
-        document.getElementById('message').innerHTML = `<span style="color: red;">No message to save. Please search for a message first.</span>`;
-        return;
-    }
-    let response = await fetch(`http://127.0.0.1:5000/message/${currentMessageId}`, {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: `content=${encodeURIComponent(content)}`
-    });
-    let result = await response.json();
-    if (result.message) {
-        document.getElementById('message').innerHTML = `<span style="color: green;">${result.message}</span>`;
-    } else {
-        document.getElementById('message').innerHTML = `<span style="color: red;">Error: ${result.error}</span>`;
-    }
+function logout() {
+  // Resetear completamente el estado
+  state = { user_id: null, username: null, public_key: null, login_pin: null, search_pin: null, active_conversation: null, partner_label: null };
+
+  // Limpiar UI
+  clearConversations();
+  resetChatViews();
+
+  document.getElementById('auth').style.display = 'block';
+  document.getElementById('app').style.display = 'none';
 }
 
-// Function to delete the current message
-async function deleteMessage() {
-    if (currentMessageId === "") {
-        document.getElementById('message').innerHTML = `<span style="color: red;">No message to delete. Please search for a message first.</span>`;
-        return;
-    }
-    let response = await fetch(`http://127.0.0.1:5000/message/${currentMessageId}`, {
-        method: 'DELETE',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'}
-    });
-    let result = await response.json();
-    if (result.message) {
-        document.getElementById('message').innerHTML = `<span style="color: green;">${result.message}</span>`;
-        document.getElementById('messageContent').value = '';  // Clear the textarea
-        document.getElementById('searchId').value = '';     // Clear the search bar
-        currentMessageId = "";  // Reset the current message ID
-        resetButtons();  // Revert button visibility to show 'Create Message'
-    } else {
-        document.getElementById('message').innerHTML = `<span style="color: red;">Error: ${result.error}</span>`;
-    }
+function clearConversations() {
+  const el = document.getElementById('conv_list');
+  if (el) el.innerHTML = '';
 }
 
-// Function to reset the buttons when no message is found or after deletion
-function resetButtons() {
-    document.getElementById('panicButton').style.display = 'none';  // Hide Panic Button
-    document.getElementById('decryptButton').style.display = 'none';  // Hide Decrypt Button
-    document.getElementById('saveButton').style.display = 'none';  // Hide Save Changes button
-    document.getElementById('deleteButton').style.display = 'none';  // Hide Delete Message button
-    document.getElementById('createButton').style.display = 'inline';  // Show Create Message button
+function resetChatViews() {
+  const chatView = document.getElementById('chat_view');
+  const chatBox = document.getElementById('chat_box');
+  const chatHeader = document.getElementById('chat_header');
+  if (chatView) chatView.innerHTML = '';
+  if (chatHeader) chatHeader.innerText = '';
+  if (chatBox) chatBox.style.display = 'none';
 }
 
-// Function to encrypt the message using a public key
-async function encryptMessage() {
-    let messageContent = document.getElementById('messageContent').value;
-    let publicKey = prompt("Enter the public key:");
-
-    let response = await fetch('http://127.0.0.1:5000/encrypt_message', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: `message=${encodeURIComponent(messageContent)}&public_key=${encodeURIComponent(publicKey)}&message_id=${encodeURIComponent(currentMessageId)}`
-    });
-
-    let result = await response.json();
-    if (result.encrypted_message) {
-        document.getElementById('messageContent').value = result.encrypted_message;  // Display encrypted content
-
-        // Hide all buttons except Decrypt when the message is encrypted
-        document.getElementById('panicButton').style.display = 'none';
-        document.getElementById('saveButton').style.display = 'none';
-        document.getElementById('deleteButton').style.display = 'none';
-        document.getElementById('createButton').style.display = 'none';
-        document.getElementById('decryptButton').style.display = 'inline';
-    } else {
-        alert("Encryption failed: " + result.error);
-    }
+async function loadConversations() {
+  if (!state.user_id) return;
+  const res = await fetch(`/conversations/${state.user_id}`);
+  const list = await res.json();
+  const el = document.getElementById('conv_list');
+  el.innerHTML = '';
+  list.forEach(item => {
+    const a = document.createElement('button');
+    a.className = 'conv';
+    a.innerText = `${item.partner_username} (${item.partner_search_pin.slice(0,8)})`;
+    a.onclick = () => openConversation(item.conversation_id, item.partner_username);
+    el.appendChild(a);
+  });
 }
 
-// Function to decrypt the message using a private key
-async function decryptMessage() {
-    let privateKey = prompt("Enter your private key:");
-    let encryptedMessage = document.getElementById('messageContent').value;  // Encrypted message content in the textbox
+async function startConversation() {
+  const pin = document.getElementById('partner_pin').value.trim();
+  if (!pin) { alert("Partner search PIN required"); return; }
+  const res = await fetch('/start_conversation', {
+    method: 'POST',
+    headers: {'Content-Type':'application/x-www-form-urlencoded'},
+    body: `user_id=${encodeURIComponent(state.user_id)}&partner_search_pin=${encodeURIComponent(pin)}`
+  });
+  const data = await res.json();
+  if (data.error) { alert(data.error); return; }
+  await loadConversations();
+  await openConversation(data.conversation_id);
+}
 
-    let response = await fetch('http://127.0.0.1:5000/decrypt_message', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: `encrypted_message=${encodeURIComponent(encryptedMessage)}&private_key=${encodeURIComponent(privateKey)}&message_id=${encodeURIComponent(currentMessageId)}`
-    });
+async function openConversation(conversation_id, partnerLabel='Chat') {
+  if (!conversation_id) return;
+  state.active_conversation = conversation_id;
+  state.partner_label = partnerLabel || 'Chat';
 
-    let result = await response.json();
-    if (result.decrypted_message) {
-        document.getElementById('messageContent').value = result.decrypted_message;  // Display decrypted content
+  // Preparar UI limpia
+  const header = document.getElementById('chat_header');
+  const view = document.getElementById('chat_view');
+  const box = document.getElementById('chat_box');
+  if (header) header.innerText = `Conversation: ${state.partner_label}`;
+  if (view) view.innerHTML = '';
+  if (box) box.style.display = 'block';
 
-        // Show Panic Button, Save Changes, and Delete Message buttons when the message is decrypted
-        document.getElementById('panicButton').style.display = 'inline';
-        document.getElementById('saveButton').style.display = 'inline';
-        document.getElementById('deleteButton').style.display = 'inline';
-        document.getElementById('decryptButton').style.display = 'none';
-        document.getElementById('createButton').style.display = 'none';
-    } else {
-        alert("Decryption failed: " + result.error);
-    }
+  // Carga inicial: vista encriptada (no desciframos automáticamente)
+  await loadMessages(false);
+}
+
+async function sendMessage() {
+  const text = document.getElementById('msg_input').value;
+  if (!text || !state.active_conversation) return;
+  const res = await fetch('/send_message', {
+    method: 'POST',
+    headers: {'Content-Type':'application/x-www-form-urlencoded'},
+    body: `conversation_id=${encodeURIComponent(state.active_conversation)}&sender_id=${encodeURIComponent(state.user_id)}&content=${encodeURIComponent(text)}`
+  });
+  const data = await res.json();
+  if (data.error) { alert(data.error); return; }
+  document.getElementById('msg_input').value = '';
+  await loadMessages(false);
+}
+
+async function loadMessages(decryptNow) {
+  const view = document.getElementById('chat_view');
+  if (!state.active_conversation || !state.user_id) return;
+
+  // 1) obtener mensajes encriptados
+  const encRes = await fetch(`/messages/${state.active_conversation}?user_id=${encodeURIComponent(state.user_id)}`);
+  const encList = await encRes.json();
+  if (encList.error) { alert(encList.error); return; }
+
+  if (!decryptNow) {
+    view.innerHTML = encList.map(m => renderBubble(`[encrypted] ${m.encrypted.slice(0,40)}…`, m.sender_id)).join('');
+    return;
+  }
+
+  // 2) pedir descifrado usando el login_pin como key_password
+  const decRes = await fetch('/messages_decrypted', {
+    method: 'POST',
+    headers: {'Content-Type':'application/x-www-form-urlencoded'},
+    body: `conversation_id=${encodeURIComponent(state.active_conversation)}&user_id=${encodeURIComponent(state.user_id)}&key_password=${encodeURIComponent(state.login_pin)}`
+  });
+  const decList = await decRes.json();
+  if (decList.error) {
+    view.innerHTML = encList.map(m => renderBubble(`[encrypted] ${m.encrypted.slice(0,40)}…`, m.sender_id)).join('');
+    alert(decList.error);
+    return;
+  }
+
+  view.innerHTML = decList.map(m => renderBubble(m.content, m.sender_id)).join('');
+  view.scrollTop = view.scrollHeight;
+}
+
+function renderBubble(text, sender_id) {
+  const mine = (sender_id === state.user_id);
+  const cls = mine ? 'bubble mine' : 'bubble';
+  return `<div class="${cls}">${escapeHTML(text)}</div>`;
+}
+
+function escapeHTML(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&gt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }

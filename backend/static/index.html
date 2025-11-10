@@ -1,36 +1,62 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="style.css">
-    <title>EZ-DMS</title>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="stylesheet" href="style.css"/>
+  <title>EZ-DMS</title>
 </head>
 <body>
-    <h1>EZ-DMS</h1>
+  <h1>EZ-DMS</h1>
 
-    <!-- Textbox for message content -->
-    <form id="messageForm">
-        <textarea id="messageContent" placeholder="Write your message here..."></textarea><br>
+  <div id="auth">
+    <h2>Register</h2>
+    <input id="reg_username" placeholder="Username"/>
+    <button onclick="registerUser()">Create account</button>
 
-        <!-- Search bar for message ID -->
-        <input type="text" id="searchId" placeholder="Enter Message ID to Search">
-        <button type="button" onclick="searchMessage()">Search</button><br><br>
+    <h2>Login</h2>
+    <input id="login_pin" placeholder="Login PIN"/>
+    <button onclick="login()">Login</button>
 
-        <!-- Button for creating a new message -->
-        <button type="button" id="createButton" onclick="createMessage()">Create Message</button>
+    <div id="register_result" class="box"></div>
+  </div>
 
-        <!-- Buttons for Save and Delete operations (hidden by default) -->
-        <button type="button" id="saveButton" onclick="saveMessage()" style="display: none;">Save Changes</button>
-        <button type="button" id="deleteButton" onclick="deleteMessage()" style="display: none;">Delete Message</button>
+  <div id="app" style="display:none;">
+    <div class="user-bar">
+      <div>
+        <div id="me_label"></div>
+        <div class="small">
+          <b>Login PIN:</b> <span id="me_login_pin"></span> &nbsp;|&nbsp;
+          <b>Search PIN:</b> <span id="me_search_pin"></span>
+        </div>
+      </div>
+      <button onclick="logout()">Logout</button>
+    </div>
 
-        <!-- Panic and Decrypt (hidden by default) -->
-        <button type="button" id="panicButton" onclick="encryptMessage()" style="display: none;">Panic Button (Encrypt)</button>
-        <button type="button" id="decryptButton" onclick="decryptMessage()" style="display: none;">Decrypt Message</button>
+    <div class="layout">
+      <div class="sidebar">
+        <h3>Your conversations</h3>
+        <div id="conv_list"></div>
 
-    </form>
+        <h3>Start new conversation</h3>
+        <input id="partner_pin" placeholder="Partner search PIN"/>
+        <button onclick="startConversation()">Start</button>
+        <div class="hint">No se permite duplicar conversaciones con el mismo usuario.</div>
+      </div>
 
-    <div id="message"></div> <!-- Display messages here -->
-    <script src="script.js"></script>
+      <div class="chat">
+        <div id="chat_header"></div>
+        <div id="chat_view" class="chat-view"></div>
+        <div id="chat_box" class="chat-box" style="display:none;">
+          <input id="msg_input" placeholder="Type a message"/>
+          <button onclick="sendMessage()">Send</button>
+          <div class="hint">Para leer, usamos tu Login PIN para abrir tu private key cifrada.</div>
+          <button onclick="loadMessages(true)">Refresh & Decrypt</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
 </body>
 </html>
