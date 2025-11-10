@@ -5,7 +5,8 @@ let state = {
   login_pin: null,
   search_pin: null,
   active_conversation: null,
-  partner_label: null
+  partner_label: null,
+  conversations: [] // cache de la lista para lookup de labels
 };
 
 async function registerUser() {
@@ -22,9 +23,8 @@ async function registerUser() {
   box.innerHTML = `
     <b>Account created</b><br/>
     Login PIN: <code>${data.login_pin}</code><br/>
-    Search PIN: <code>${data.search_pin}</code><br/><br/>
-    <b>PUBLIC KEY</b><br/><pre>${data.public_key}</pre>
-    <div class="hint">Tu private key quedó cifrada con tu Login PIN (no se muestra ni se copia).</div>
+    Search PIN: <code>${data.search_pin}</code><br/>
+    <div class="hint">Tu private key quedó cifrada con tu Login PIN.</div>
   `;
 }
 
@@ -32,10 +32,10 @@ async function login() {
   const pin = document.getElementById('login_pin').value.trim();
   if (!pin) { alert("Login PIN required"); return; }
 
-  // Limpieza visual y de estado antes de cargar nuevo usuario
-  resetChatViews();        // limpia chat_view y oculta chat_box
-  clearConversations();    // vacía la sidebar
-  state.active_conversation = null;
+  // Limpieza UI/estado antes de cargar nuevo usuario
+  resetChatViews();
+  clearConversations();
+  state = { ...state, active_conversation: null, partner_label: null, conversations: [] };
 
   const res = await fetch('/login', {
     method: 'POST',
@@ -62,13 +62,13 @@ async function login() {
 }
 
 function logout() {
-  // Resetear completamente el estado
-  state = { user_id: null, username: null, public_key: null, login_pin: null, search_pin: null, active_conversation: null, partner_label: null };
-
-  // Limpiar UI
+  state = {
+    user_id: null, username: null, public_key: null,
+    login_pin: null, search_pin: null,
+    active_conversation: null, partner_label: null, conversations: []
+  };
   clearConversations();
   resetChatViews();
-
   document.getElementById('auth').style.display = 'block';
   document.getElementById('app').style.display = 'none';
 }
@@ -91,9 +91,11 @@ async function loadConversations() {
   if (!state.user_id) return;
   const res = await fetch(`/conversations/${state.user_id}`);
   const list = await res.json();
+  state.conversations = Array.isArray(list) ? list : [];
+
   const el = document.getElementById('conv_list');
   el.innerHTML = '';
-  list.forEach(item => {
+  state.conversations.forEach(item => {
     const a = document.createElement('button');
     a.className = 'conv';
     a.innerText = `${item.partner_username} (${item.partner_search_pin.slice(0,8)})`;
@@ -112,8 +114,12 @@ async function startConversation() {
   });
   const data = await res.json();
   if (data.error) { alert(data.error); return; }
+
+  // Recargar lista y abrir con label
   await loadConversations();
-  await openConversation(data.conversation_id);
+  const conv = state.conversations.find(c => c.conversation_id === data.conversation_id);
+  const label = conv ? conv.partner_username : 'Chat';
+  await openConversation(data.conversation_id, label);
 }
 
 async function openConversation(conversation_id, partnerLabel='Chat') {
@@ -121,7 +127,7 @@ async function openConversation(conversation_id, partnerLabel='Chat') {
   state.active_conversation = conversation_id;
   state.partner_label = partnerLabel || 'Chat';
 
-  // Preparar UI limpia
+  // Preparar UI
   const header = document.getElementById('chat_header');
   const view = document.getElementById('chat_view');
   const box = document.getElementById('chat_box');
@@ -129,8 +135,8 @@ async function openConversation(conversation_id, partnerLabel='Chat') {
   if (view) view.innerHTML = '';
   if (box) box.style.display = 'block';
 
-  // Carga inicial: vista encriptada (no desciframos automáticamente)
-  await loadMessages(false);
+  // Carga inicial: DESCIFRADO automático
+  await loadMessages(true);
 }
 
 async function sendMessage() {
@@ -144,7 +150,8 @@ async function sendMessage() {
   const data = await res.json();
   if (data.error) { alert(data.error); return; }
   document.getElementById('msg_input').value = '';
-  await loadMessages(false);
+  // Tras enviar, refrescamos DESCIFRADO automáticamente
+  await loadMessages(true);
 }
 
 async function loadMessages(decryptNow) {
@@ -156,21 +163,24 @@ async function loadMessages(decryptNow) {
   const encList = await encRes.json();
   if (encList.error) { alert(encList.error); return; }
 
+  // Si no era requerido descifrar (fallback)
   if (!decryptNow) {
     view.innerHTML = encList.map(m => renderBubble(`[encrypted] ${m.encrypted.slice(0,40)}…`, m.sender_id)).join('');
     return;
   }
 
-  // 2) pedir descifrado usando el login_pin como key_password
+  // 2) descifrado automático usando login_pin como key_password
   const decRes = await fetch('/messages_decrypted', {
     method: 'POST',
     headers: {'Content-Type':'application/x-www-form-urlencoded'},
     body: `conversation_id=${encodeURIComponent(state.active_conversation)}&user_id=${encodeURIComponent(state.user_id)}&key_password=${encodeURIComponent(state.login_pin)}`
   });
   const decList = await decRes.json();
+
   if (decList.error) {
+    // Fallback silencioso a vista encriptada si algo falla
     view.innerHTML = encList.map(m => renderBubble(`[encrypted] ${m.encrypted.slice(0,40)}…`, m.sender_id)).join('');
-    alert(decList.error);
+    console.warn(decList.error);
     return;
   }
 
@@ -185,5 +195,5 @@ function renderBubble(text, sender_id) {
 }
 
 function escapeHTML(s) {
-  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&gt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
