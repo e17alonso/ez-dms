@@ -226,11 +226,11 @@ ez-dms/
 
 ## Author
 
-Josue Ruiz - [@josuer02]
+Josue Ruiz - [@josuer02](https://github.com/josuer02)
 
-Esteban Alonso - [@e17alonso]
+Esteban Alonso - [@e17alonso](https://github.com/e17alonso)
 
-Steph Grotewold - [@stephgrotewold]
+Steph Grotewold - [@stephgrotewold](https://github.com/stephgrotewold)
 
 Project Link: [https://github.com/e17alonso/ez-dms.git](https://github.com/e17alonso/ez-dms.git)
 
