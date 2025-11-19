@@ -5,9 +5,13 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes as kdf_hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import base64, os
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, session
 from flask_cors import CORS
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import sqlite3, uuid, datetime
+from werkzeug.security import generate_password_hash, check_password_hash
+import re
+import logging
 
 # ---------------------------
 # Utilidades RSA / PEM
@@ -55,7 +59,6 @@ def decrypt_with_private_key(encrypted_b64: str, private_key_pem: str) -> str:
 PBKDF2_ITERATIONS = 200_000
 
 def _derive_key(password: str, salt: bytes) -> bytes:
-    # FIX: usar instancia -> kdf_hashes.SHA256()
     kdf = PBKDF2HMAC(
         algorithm=kdf_hashes.SHA256(),
         length=32,
@@ -90,8 +93,16 @@ def decrypt_private_key_pem(enc_b64: str, key_password: str, salt_b64: str, nonc
 # App / DB
 # ---------------------------
 app = Flask(__name__, static_folder='static')
-CORS(app)
-DATABASE = 'ez_dms.db'
+app.secret_key = os.urandom(24)
+CORS(app, supports_credentials=True)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('ez-dms')
+
+APP_ROOT = os.path.dirname(os.path.abspath(__file__))
+DATABASE = os.path.join(APP_ROOT, 'ez_dms.db')
 
 def connect_db():
     return sqlite3.connect(DATABASE)
@@ -164,13 +175,18 @@ def _short_pin():
 @app.route('/register', methods=['POST'])
 def register():
     username = request.form.get('username', '').strip()
-    if not username:
-        return jsonify({"error": "Username is required"}), 400
+    # Validación básica
+    if not username or len(username) < 3 or len(username) > 32:
+        return jsonify({"error": "El nombre de usuario debe tener entre 3 y 32 caracteres"}), 400
+    if not re.match(r'^[a-zA-Z0-9_\-]+$', username):
+        return jsonify({"error": "El nombre de usuario solo puede contener letras, números, guiones y guiones bajos"}), 400
 
     login_pin = _short_pin()
     search_pin = _short_pin()
     pub, priv = generate_key_pair()
 
+    # Hash del login_pin
+    login_pin_hash = generate_password_hash(login_pin)
     # Ciframos la private key usando el MISMO login_pin
     priv_enc, salt_b64, nonce_b64 = encrypt_private_key_pem(priv, login_pin)
 
@@ -179,7 +195,7 @@ def register():
         con.execute("""INSERT INTO users
             (id, username, login_pin, search_pin, public_key, private_key, private_key_enc, private_key_salt, private_key_nonce)
             VALUES (?,?,?,?,?,?,?,?,?)""",
-            (user_id, username, login_pin, search_pin, pub, "", priv_enc, salt_b64, nonce_b64))
+            (user_id, username, login_pin_hash, search_pin, pub, "", priv_enc, salt_b64, nonce_b64))
         con.commit()
 
     return jsonify({
@@ -191,21 +207,20 @@ def register():
 @app.route('/login', methods=['POST'])
 def login():
     pin = request.form.get('login_pin', '').strip()
-    if not pin:
-        return jsonify({"error": "login_pin required"}), 400
+    if not pin or len(pin) < 4 or len(pin) > 16:
+        return jsonify({"error": "login_pin inválido"}), 400
     with connect_db() as con:
-        cur = con.execute("""SELECT id, username, public_key, login_pin, search_pin
-                             FROM users WHERE login_pin = ?""", (pin,))
-        row = cur.fetchone()
-        if not row:
-            return jsonify({"error": "Invalid PIN"}), 401
-        return jsonify({
-            "user_id": row[0],
-            "username": row[1],
-            "public_key": row[2],
-            "login_pin": row[3],
-            "search_pin": row[4]
-        })
+        cur = con.execute("SELECT id, username, public_key, login_pin, search_pin FROM users")
+        for row in cur.fetchall():
+            if check_password_hash(row[3], pin):
+                return jsonify({
+                    "user_id": row[0],
+                    "username": row[1],
+                    "public_key": row[2],
+                    "login_pin": pin,
+                    "search_pin": row[4]
+                })
+        return jsonify({"error": "Invalid PIN"}), 401
 
 # ---------------------------
 # Conversaciones
@@ -264,9 +279,11 @@ def send_message():
     conversation_id = request.form.get('conversation_id')
     sender_id = request.form.get('sender_id')
     content = request.form.get('content', '')
-
+    # Validación básica de mensaje
     if not conversation_id or not sender_id or not content:
-        return jsonify({"error": "conversation_id, sender_id and content required"}), 400
+        return jsonify({"error": "conversation_id, sender_id y contenido requeridos"}), 400
+    if len(content) > 500:
+        return jsonify({"error": "El mensaje es demasiado largo (máx 500 caracteres)"}), 400
 
     with connect_db() as con:
         conv = con.execute("SELECT user_a, user_b FROM conversations WHERE id = ?", (conversation_id,)).fetchone()
@@ -289,6 +306,19 @@ def send_message():
             VALUES(?,?,?,?,?,?)
         """, (msg_id, conversation_id, sender_id, datetime.datetime.utcnow().isoformat(), enc_a, enc_b))
         con.commit()
+
+        # Emit event to room
+        socketio.emit('new_message', {
+            'message_id': msg_id,
+            'conversation_id': conversation_id,
+            'sender_id': sender_id,
+            'created_at': datetime.datetime.utcnow().isoformat(),
+            'encrypted_for_a': enc_a,
+            'encrypted_for_b': enc_b,
+            'user_a': user_a,
+            'user_b': user_b
+        }, room=conversation_id)
+
         return jsonify({"message_id": msg_id})
 
 @app.route('/messages/<conversation_id>', methods=['GET'])
@@ -370,6 +400,49 @@ def get_messages_decrypted():
     return jsonify(out)
 
 # ---------------------------
+# SocketIO events (real-time updates)
+# ---------------------------
+@socketio.on('connect')
+def on_connect():
+    logger.info(f"Socket connected: {request.sid}")
+    emit('connected', {'sid': request.sid})
+
+@socketio.on('disconnect')
+def on_disconnect():
+    logger.info(f"Socket disconnected: {request.sid}")
+
+@socketio.on('join')
+def on_join(data):
+    conversation_id = data.get('conversation_id')
+    user_id = data.get('user_id')
+    if not conversation_id or not user_id:
+        return
+    # Validate that user is participant of the conversation
+    with connect_db() as con:
+        conv = con.execute("SELECT user_a, user_b FROM conversations WHERE id = ?", (conversation_id,)).fetchone()
+        if not conv:
+            return
+        if user_id not in conv:
+            return
+    join_room(conversation_id)
+    logger.info(f"User {user_id} joined room {conversation_id}")
+
+@socketio.on('leave')
+def on_leave(data):
+    conversation_id = data.get('conversation_id')
+    user_id = data.get('user_id')
+    if not conversation_id:
+        return
+    leave_room(conversation_id)
+    logger.info(f"User {user_id} left room {conversation_id}")
+
+# health check
+@app.route('/ping')
+def ping():
+    return jsonify({'status': 'ok'})
+
+# ---------------------------
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True)
+    # Use socketio.run with eventlet to support websockets
+    socketio.run(app, debug=True, host='0.0.0.0', port=5000, use_reloader=False)

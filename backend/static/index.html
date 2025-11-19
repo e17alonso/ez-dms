@@ -4,58 +4,60 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <link rel="stylesheet" href="style.css"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <title>EZ-DMS</title>
 </head>
 <body>
-  <h1>EZ-DMS</h1>
-
-  <div id="auth">
-    <h2>Register</h2>
-    <input id="reg_username" placeholder="Username"/>
-    <button onclick="registerUser()">Create account</button>
-
-    <h2>Login</h2>
-    <input id="login_pin" placeholder="Login PIN"/>
-    <button onclick="login()">Login</button>
-
-    <div id="register_result" class="box"></div>
-  </div>
-
-  <div id="app" style="display:none;">
-    <div class="user-bar">
-      <div>
-        <div id="me_label"></div>
-        <div class="small">
-          <b>Login PIN:</b> <span id="me_login_pin"></span> &nbsp;|&nbsp;
-          <b>Search PIN:</b> <span id="me_search_pin"></span>
+  <div class="main-container">
+    <h1 class="logo">EZ-DMS <span class="badge">secure</span></h1>
+    <div id="auth" class="auth-card">
+      <h2>Crear cuenta</h2>
+      <input id="reg_username" class="input" placeholder="Nombre de usuario"/>
+      <button class="btn primary" onclick="registerUser()">Crear cuenta</button>
+      <div class="divider"></div>
+      <h2>Iniciar sesión</h2>
+      <input id="login_pin" class="input" placeholder="PIN de acceso"/>
+      <button class="btn secondary" onclick="login()">Entrar</button>
+      <div id="register_result" class="box"></div>
+    </div>
+    <div id="app" style="display:none;">
+      <div class="user-bar">
+        <div>
+          <div id="me_label" class="user-label"></div>
+          <div class="small">
+            <b>Login PIN:</b> <span id="me_login_pin"></span> &nbsp;|&nbsp;
+            <b>Search PIN:</b> <span id="me_search_pin"></span>
+          </div>
+        </div>
+        <button class="btn danger" onclick="logout()">Cerrar sesión</button>
+      </div>
+      <div class="layout">
+        <div class="sidebar">
+          <h3>Tus chats</h3>
+          <div id="conv_list" class="conv-list"></div>
+          <div class="divider"></div>
+          <h3>Nuevo chat</h3>
+          <input id="partner_pin" class="input" placeholder="PIN de búsqueda del usuario"/>
+          <button class="btn primary" onclick="startConversation()">Iniciar chat</button>
+          <div class="hint">No se permite duplicar conversaciones con el mismo usuario.</div>
+        </div>
+        <div class="chat">
+          <div id="chat_header" class="chat-header"></div>
+          <div id="chat_view" class="chat-view"></div>
+          <div id="chat_box" class="chat-box" style="display:none;">
+            <div class="chat-input-row">
+              <input id="msg_input" class="input" placeholder="Escribe un mensaje"/>
+              <button class="btn send" onclick="sendMessage()" title="Enviar">➤</button>
+            </div>
+            <div class="hint">Los mensajes se descifran automáticamente usando tu Login PIN.</div>
+          </div>
         </div>
       </div>
-      <button onclick="logout()">Logout</button>
-    </div>
-
-    <div class="layout">
-      <div class="sidebar">
-        <h3>Your conversations</h3>
-        <div id="conv_list"></div>
-
-        <h3>Start new conversation</h3>
-        <input id="partner_pin" placeholder="Partner search PIN"/>
-        <button onclick="startConversation()">Start</button>
-        <div class="hint">No se permite duplicar conversaciones con el mismo usuario.</div>
-      </div>
-
-      <div class="chat">
-        <div id="chat_header"></div>
-        <div id="chat_view" class="chat-view"></div>
-        <div id="chat_box" class="chat-box" style="display:none;">
-          <input id="msg_input" placeholder="Type a message"/>
-          <button onclick="sendMessage()">Send</button>
-          <div class="hint">Los mensajes se descifran automáticamente usando tu Login PIN.</div>
-        </div>
-      </div>
     </div>
   </div>
-
+  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

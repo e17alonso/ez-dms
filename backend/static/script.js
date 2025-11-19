@@ -62,6 +62,9 @@ async function login() {
 }
 
 function logout() {
+  if (state.active_conversation) {
+    leaveConversationSocket(state.active_conversation);
+  }
   state = {
     user_id: null, username: null, public_key: null,
     login_pin: null, search_pin: null,
@@ -124,6 +127,10 @@ async function startConversation() {
 
 async function openConversation(conversation_id, partnerLabel='Chat') {
   if (!conversation_id) return;
+  if (state.active_conversation) {
+    leaveConversationSocket(state.active_conversation);
+  }
+
   state.active_conversation = conversation_id;
   state.partner_label = partnerLabel || 'Chat';
 
@@ -134,6 +141,9 @@ async function openConversation(conversation_id, partnerLabel='Chat') {
   if (header) header.innerText = `Conversation: ${state.partner_label}`;
   if (view) view.innerHTML = '';
   if (box) box.style.display = 'block';
+
+  // Join socket room
+  joinConversationSocket(conversation_id);
 
   // Carga inicial: DESCIFRADO automático
   await loadMessages(true);
@@ -191,9 +201,45 @@ async function loadMessages(decryptNow) {
 function renderBubble(text, sender_id) {
   const mine = (sender_id === state.user_id);
   const cls = mine ? 'bubble mine' : 'bubble';
-  return `<div class="${cls}">${escapeHTML(text)}</div>`;
+  const avatar = mine ? '<div class="avatar mine">🟦</div>' : '<div class="avatar">🟩</div>';
+  return `<div class="bubble-row ${mine ? 'right' : 'left'}">${!mine ? avatar : ''}<div class="${cls}">${escapeHTML(text)}</div>${mine ? avatar : ''}</div>`;
 }
 
 function escapeHTML(s) {
   return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// SocketIO (real-time updates)
+const socket = io();
+
+socket.on('connect', () => {
+  console.log('Socket connected', socket.id);
+});
+
+socket.on('disconnect', () => {
+  console.log('Socket disconnected');
+});
+
+socket.on('new_message', async (payload) => {
+  // payload: { message_id, conversation_id, sender_id, created_at, encrypted_for_a, encrypted_for_b, user_a, user_b }
+  if (!state.active_conversation) return;
+  if (payload.conversation_id !== state.active_conversation) return; // different room
+
+  // Si es nuestro chat, agregamos y desciframos localmente
+  if (!state.user_id) return;
+
+  // Si es de la conversación activa, recargar mensajes descifrados
+  if (payload.conversation_id === state.active_conversation) {
+    await loadMessages(true);
+  }
+});
+
+function joinConversationSocket(conversation_id) {
+  if (!conversation_id || !state.user_id) return;
+  socket.emit('join', { conversation_id: conversation_id, user_id: state.user_id });
+}
+
+function leaveConversationSocket(conversation_id) {
+  if (!conversation_id || !state.user_id) return;
+  socket.emit('leave', { conversation_id: conversation_id, user_id: state.user_id });
 }
