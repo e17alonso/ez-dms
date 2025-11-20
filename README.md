@@ -619,6 +619,8 @@ Steph Grotewold - [@stephgrotewold](https://github.com/stephgrotewold)
 
 Project Link: [https://github.com/e17alonso/ez-dms.git](https://github.com/e17alonso/ez-dms.git)
 
+PPTX Link: [PowerPoint Presentation](https://www.canva.com/design/DAG5ERmEAW0/4MZcVKp1OWLLIsFQY6fz5g/view?utm_content=DAG5ERmEAW0&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=heb4d0a22b8)
+
 ## Acknowledgments
 
 - Built with [Flask](https://flask.palletsprojects.com/)
