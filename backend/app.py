@@ -8,6 +8,8 @@ import base64, os
 from flask import Flask, request, jsonify, send_from_directory, session
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room, leave_room
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import sqlite3, uuid, datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 import re
@@ -97,6 +99,14 @@ app.secret_key = os.urandom(24)
 CORS(app, supports_credentials=True)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
+# Rate limiting (previene ataques de fuerza bruta)
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
+)
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('ez-dms')
@@ -173,6 +183,7 @@ def _short_pin():
     return str(uuid.uuid4()).replace("-", "")[:8]
 
 @app.route('/register', methods=['POST'])
+@limiter.limit("5 per minute")  # Limita registros a 5 por minuto
 def register():
     username = request.form.get('username', '').strip()
     # Validación básica
@@ -205,6 +216,7 @@ def register():
     })
 
 @app.route('/login', methods=['POST'])
+@limiter.limit("10 per minute")  # Limita intentos de login a 10 por minuto
 def login():
     pin = request.form.get('login_pin', '').strip()
     if not pin or len(pin) < 4 or len(pin) > 16:
@@ -275,6 +287,7 @@ def list_conversations(user_id):
 # Mensajes
 # ---------------------------
 @app.route('/send_message', methods=['POST'])
+@limiter.limit("30 per minute")  # Limita envío de mensajes a 30 por minuto
 def send_message():
     conversation_id = request.form.get('conversation_id')
     sender_id = request.form.get('sender_id')

@@ -37,6 +37,13 @@ A secure, end-to-end encrypted messaging application built with Flask and JavaSc
 - Each conversation participant has their own encrypted copy of each message
 - Login PINs are hashed and never stored in plain text
 
+### Rate Limiting
+
+- **Registration**: Limited to 5 attempts per minute per IP
+- **Login**: Limited to 10 attempts per minute per IP
+- **Send Message**: Limited to 30 messages per minute per IP
+- Prevents brute force attacks and spam
+
 ### Real-Time Communication
 
 - **WebSockets**: Flask-SocketIO for instant message delivery
@@ -84,6 +91,7 @@ http://localhost:5000
 Flask==3.0.0
 Flask-CORS==4.0.0
 Flask-SocketIO==5.3.6
+Flask-Limiter==3.5.0
 cryptography==41.0.7
 werkzeug==3.0.1
 ```
@@ -390,19 +398,6 @@ sudo lsof -i :443
 - **Session persistence**: Each user's session is tied to their browser
 - **Database location**: SQLite database created at `backend/ez_dms.db`
 
-### Production Considerations
-
-For production deployment:
-
-1. Use a real domain with Let's Encrypt for valid SSL certificates
-2. Deploy to a cloud service (Railway, Render, AWS, etc.)
-3. Use a production WSGI server (Gunicorn with eventlet/gevent)
-4. Configure proper CORS origins (not `*`)
-5. Use environment variables for secrets
-6. Set up database backups
-7. Implement rate limiting
-8. Add monitoring and logging
-
 ## Architecture
 
 ### Backend (`app.py`)
@@ -570,6 +565,7 @@ ez-dms/
 - Login PINs are hashed using industry-standard methods
 - WebSocket connections for secure real-time communication
 - Input validation prevents injection attacks
+- **Rate limiting** protects against brute force attacks and spam
 
 ### Limitations & Future Improvements
 
@@ -577,7 +573,7 @@ ez-dms/
 - No forward secrecy (use Signal Protocol in future)
 - No message deletion or expiration
 - No user blocking or reporting features
-- Consider adding rate limiting
+- ~~Consider adding rate limiting~~ ✅ **Rate limiting implemented** (v1.1)
 - Consider adding 2FA for additional security
 - WebSocket authentication could be enhanced
 - Add message read receipts
